@@ -529,15 +529,23 @@ int waybar::modules::Network::handleEvents(struct nl_msg *msg, void *data) {
           case IFA_LOCAL:
             char ipaddr[INET6_ADDRSTRLEN];
             if (!is_del_event) {
-              net->ipaddr_ = inet_ntop(ifa->ifa_family, RTA_DATA(ifa_rta), ipaddr, sizeof(ipaddr));
-              net->cidr_ = ifa->ifa_prefixlen;
               switch (ifa->ifa_family) {
                 case AF_INET: {
+                  net->ipaddr_ = inet_ntop(ifa->ifa_family, RTA_DATA(ifa_rta), ipaddr, sizeof(ipaddr));
+                  net->cidr_ = ifa->ifa_prefixlen;
                   struct in_addr netmask;
                   netmask.s_addr = htonl(~0 << (32 - ifa->ifa_prefixlen));
                   net->netmask_ = inet_ntop(ifa->ifa_family, &netmask, ipaddr, sizeof(ipaddr));
+                  break;
                 }
                 case AF_INET6: {
+                  if (!net->ipaddr_.empty()) {
+                    spdlog::debug("network: {} already have an IPv4 addr, prefer that {}/{}", net->ifname_, net->ipaddr_,
+                                  net->cidr_);
+                    continue;
+                  }
+                  net->ipaddr_ = inet_ntop(ifa->ifa_family, RTA_DATA(ifa_rta), ipaddr, sizeof(ipaddr));
+                  net->cidr_ = ifa->ifa_prefixlen;
                   struct in6_addr netmask;
                   for (int i = 0; i < 16; i++) {
                     int v = (i + 1) * 8 - ifa->ifa_prefixlen;
@@ -546,6 +554,7 @@ int waybar::modules::Network::handleEvents(struct nl_msg *msg, void *data) {
                     netmask.s6_addr[i] = ~0 << v;
                   }
                   net->netmask_ = inet_ntop(ifa->ifa_family, &netmask, ipaddr, sizeof(ipaddr));
+                  break;
                 }
               }
               spdlog::debug("network: {}, new addr {}/{}", net->ifname_, net->ipaddr_, net->cidr_);
